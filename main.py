@@ -14,6 +14,7 @@ class SubtitleTranslatorApp:
         self.root.resizable(False, False)
         
         self.video_path = tk.StringVar()
+        self.video_files = []
         
         self.create_widgets()
 
@@ -52,25 +53,31 @@ class SubtitleTranslatorApp:
         sys.stdout = PrintLogger(self.log_text)
 
     def browse_file(self):
-        filename = filedialog.askopenfilename(
-            title="Select a Video File",
+        filenames = filedialog.askopenfilenames(
+            title="Select Video Files",
             filetypes=(
                 ("Video Files", "*.mp4 *.mkv *.avi *.mov"),
                 ("All Files", "*.*")
             )
         )
-        if filename:
-            self.video_path.set(filename)
+        if filenames:
+            self.video_files = list(filenames)
+            self.video_path.set("; ".join(self.video_files))
 
     def start_translation_thread(self):
-        video_file = self.video_path.get()
-        if not video_file:
-            messagebox.showwarning("No File", "Please select a video file first.")
+        video_str = self.video_path.get()
+        if not video_str:
+            messagebox.showwarning("No File", "Please select video files first.")
             return
+
+        # Use the stored list or parse from the entry if typed manually
+        if not hasattr(self, 'video_files') or not self.video_files or "; ".join(self.video_files) != video_str:
+            self.video_files = [f.strip() for f in video_str.split(';') if f.strip()]
             
-        if not os.path.exists(video_file):
-            messagebox.showerror("Error", "Selected file does not exist.")
-            return
+        for vf in self.video_files:
+            if not os.path.exists(vf):
+                messagebox.showerror("Error", f"Selected file does not exist:\n{vf}")
+                return
 
         # Disable button during processing
         self.translate_btn.config(state=tk.DISABLED, text="Processing...")
@@ -80,21 +87,32 @@ class SubtitleTranslatorApp:
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state=tk.DISABLED)
         
-        print(f"Starting pipeline for: {os.path.basename(video_file)}\n")
+        print(f"Starting pipeline for {len(self.video_files)} file(s)...\n")
         
         # Run in separate thread to prevent UI freezing
-        thread = threading.Thread(target=self.run_process, args=(video_file,))
+        thread = threading.Thread(target=self.run_process, args=(self.video_files,))
         thread.daemon = True
         thread.start()
 
-    def run_process(self, video_file):
+    def run_process(self, video_files):
+        success_count = 0
         try:
-            success = process_video(video_file)
-            if success:
-                 print("\nDone! You can close this window now.")
-                 messagebox.showinfo("Success", "Subtitles translated successfully!")
+            for i, video_file in enumerate(video_files):
+                print(f"--- Processing file {i+1} of {len(video_files)} ---")
+                print(f"File: {os.path.basename(video_file)}")
+                success = process_video(video_file)
+                if success:
+                    success_count += 1
+                print("-" * 40 + "\n")
+                
+            if success_count == len(video_files):
+                 print("\nDone! All files processed successfully. You can close this window now.")
+                 messagebox.showinfo("Success", "All subtitles translated successfully!")
+            elif success_count > 0:
+                 print(f"\nDone! {success_count}/{len(video_files)} files processed successfully.")
+                 messagebox.showwarning("Partial Success", f"Translated {success_count} out of {len(video_files)} files. Check logs for details.")
             else:
-                 messagebox.showerror("Failed", "Translation process failed. Check the logs.")
+                 messagebox.showerror("Failed", "Translation process failed for all files. Check the logs.")
         except Exception as e:
             print(f"\nCRITICAL ERROR: {e}")
             messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
