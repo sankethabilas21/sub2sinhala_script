@@ -48,29 +48,39 @@ def extract_subtitles(video_path, output_srt_path):
         print(f"An unexpected error occurred during extraction: {e}")
         return False
 
+import concurrent.futures
+
 def translate_srt(input_srt_path, output_srt_path, target_lang='si'):
     """
-    Translates an SRT file using deep-translator.
+    Translates an SRT file using deep-translator with concurrency for faster processing.
     """
     try:
         print(f"Translating {input_srt_path} to Sinhala...")
         subs = pysrt.open(input_srt_path, encoding='utf-8')
-        translator = GoogleTranslator(source='auto', target=target_lang)
         
         total_subs = len(subs)
-        for i, sub in enumerate(subs):
-            # Show progress
-            if i % 10 == 0:
-                 print(f"Translating: {i}/{total_subs} ({int(i/total_subs*100)}%)")
-                 
-            # Translate text
+        processed_count = 0
+
+        def translate_single_sub(idx, sub):
             if sub.text.strip():
                 try:
-                    translated_text = translator.translate(sub.text)
-                    sub.text = translated_text
+                    # Instantiate translator per thread to ensure thread safety
+                    local_translator = GoogleTranslator(source='auto', target=target_lang)
+                    sub.text = local_translator.translate(sub.text)
                 except Exception as trans_err:
-                     print(f"Error translating subtitle {i}: {trans_err}")
-                     # Keep original text if translation fails
+                    print(f"Error translating subtitle {idx}: {trans_err}")
+            return idx
+            
+        print("Starting concurrent translation (this will be much faster)...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            future_to_sub = {executor.submit(translate_single_sub, i, sub): i for i, sub in enumerate(subs)}
+            
+            for future in concurrent.futures.as_completed(future_to_sub):
+                processed_count += 1
+                # Show progress
+                if processed_count % 50 == 0 or processed_count == total_subs:
+                    print(f"Translated: {processed_count}/{total_subs} ({int(processed_count/total_subs*100)}%)")
+
         
         subs.save(output_srt_path, encoding='utf-8')
         print(f"Translation complete. Saved to {output_srt_path}")
