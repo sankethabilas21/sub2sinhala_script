@@ -11,21 +11,31 @@ def extract_subtitles(video_path, output_srt_path):
     try:
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         
-        # Command to extract the first English subtitle stream
-        command = [
+        # First, try to extract the English subtitle stream
+        command_eng = [
             ffmpeg_exe,
+            '-y',
             '-i', video_path,
-            '-map', '0:m:language:eng?', # Maps English subtitle streams if available
-            '-map', '0:s:0?',            # Fallback to the first subtitle stream if language not specified
-            '-max_muxing_queue_size', '1024',
+            '-map', '0:s:m:language:eng', # Maps English subtitle streams
+            '-c:s', 'srt',
             output_srt_path
         ]
         
-        # We use overwrite flag '-y'
-        command.insert(1, '-y')
+        print(f"Extracting English subtitles to {output_srt_path}...")
+        result = subprocess.run(command_eng, capture_output=True, text=True)
         
-        print(f"Extracting subtitles to {output_srt_path}...")
-        result = subprocess.run(command, capture_output=True, text=True)
+        # If it failed (maybe no English stream), fallback to the first subtitle stream
+        if result.returncode != 0:
+            print("English stream not found explicitly, falling back to first available subtitle stream...")
+            command_fallback = [
+                ffmpeg_exe,
+                '-y',
+                '-i', video_path,
+                '-map', '0:s:0', # Fallback to the first subtitle stream
+                '-c:s', 'srt',
+                output_srt_path
+            ]
+            result = subprocess.run(command_fallback, capture_output=True, text=True)
         
         if result.returncode != 0:
             print("Error extracting subtitles. Ensure ffmpeg is installed and the video has subtitles.")
