@@ -2,15 +2,18 @@ import os
 import subprocess
 import pysrt
 from deep_translator import GoogleTranslator
+import imageio_ffmpeg
 
 def extract_subtitles(video_path, output_srt_path):
     """
     Extracts embedded English subtitles from a video file using ffmpeg.
     """
     try:
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
         # Command to extract the first English subtitle stream
         command = [
-            'ffmpeg',
+            ffmpeg_exe,
             '-i', video_path,
             '-map', '0:m:language:eng?', # Maps English subtitle streams if available
             '-map', '0:s:0?',            # Fallback to the first subtitle stream if language not specified
@@ -31,9 +34,6 @@ def extract_subtitles(video_path, output_srt_path):
             
         print("Subtitles extracted successfully.")
         return True
-    except FileNotFoundError:
-        print("ffmpeg not found. Please install ffmpeg and add it to your system PATH.")
-        return False
     except Exception as e:
         print(f"An unexpected error occurred during extraction: {e}")
         return False
